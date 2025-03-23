@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "schema_sync",
+    "schema_sync_macros",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A tool for synchronizing database schemas"
+repository = "https://github.com/tristanpoland/SchemaSync"
+license = "MIT"
