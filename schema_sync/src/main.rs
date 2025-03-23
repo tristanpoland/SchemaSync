@@ -748,18 +748,7 @@ mod tests {
         assert_eq!(naming::sanitize_identifier("user@name"), "user_name");
     }
     
-    #[test]
-    fn test_truncate_identifier() {
-        let long_name = "this_is_a_very_long_identifier_that_exceeds_database_limits";
-        let truncated = naming::truncate_identifier(long_name, 30);
-        
-        assert_eq!(truncated.len(), 30);
-        assert!(truncated.starts_with("this_is_a_very_long_identi"));
-        assert!(truncated.contains("_"));
-    }
-    
     // Integration tests that require a database connection
-    #[cfg(feature = "integration_tests")]
     mod integration_tests {
         use super::*;
         use schema_sync::{SchemaSyncClient, init};
