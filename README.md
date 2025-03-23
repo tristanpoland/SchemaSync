@@ -223,7 +223,7 @@ Custom mappings can be defined in the configuration file.
 
 ## License
 
-SchemaSync is licensed under MIT or Apache-2.0.
+SchemaSync is licensed under MIT
 
 ---
 
