@@ -592,7 +592,7 @@ impl<'a> Analyzer for MySqlAnalyzer<'a> {
                 foreign_keys
                     .entry(key.clone())
                     .or_insert(ForeignKey {
-                        name: Some(row.constraint_name),
+                        name: row.constraint_name,
                         columns: vec![],
                         ref_table: row.ref_table,
                         ref_columns: vec![],
@@ -719,7 +719,7 @@ impl<'a> Analyzer for SqliteAnalyzer<'a> {
                     generation_expression: None,
                 };
 
-                table.add_column(column);
+                table.add_column(column.clone());
 
                 if pk > 0 {
                     table.set_primary_key(PrimaryKey {
