@@ -3,12 +3,13 @@
 //! This module provides functionality to analyze an existing database schema.
 
 use async_trait::async_trait;
-use sqlx::{Any, FromRow, MySql, Pool, Postgres, Sqlite};
+use sqlx::{Any, Row, FromRow, MySql, Pool, Postgres, Sqlite};
 use std::collections::HashMap;
 
 use crate::db::connection::DatabaseConnection;
 use crate::error::Result;
 use crate::schema::types::{Column, DatabaseSchema, ForeignKey, Index, PrimaryKey, Table, View};
+
 
 /// Schema analyzer trait
 #[async_trait]
