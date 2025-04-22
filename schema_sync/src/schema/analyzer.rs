@@ -3,13 +3,12 @@
 //! This module provides functionality to analyze an existing database schema.
 
 use async_trait::async_trait;
-use sqlx::{Any, Row, FromRow, MySql, Pool, Postgres, Sqlite};
+use sqlx::{Any, FromRow, MySql, Pool, Postgres, Sqlite};
 use std::collections::HashMap;
 
 use crate::db::connection::DatabaseConnection;
 use crate::error::Result;
 use crate::schema::types::{Column, DatabaseSchema, ForeignKey, Index, PrimaryKey, Table, View};
-
 
 /// Schema analyzer trait
 #[async_trait]
@@ -473,306 +472,43 @@ impl<'a> Analyzer for PostgresAnalyzer<'a> {
 struct MySqlAnalyzer<'a> {
     pool: &'a Pool<MySql>,
 }
+
 #[async_trait]
 impl<'a> Analyzer for MySqlAnalyzer<'a> {
     async fn analyze_schema(&self, schema_name: Option<&str>) -> Result<DatabaseSchema> {
-        let schema = schema_name.unwrap_or("public");
-        let mut db_schema = DatabaseSchema::new(Some(schema.to_string()));
-        db_schema.tables = self.analyze_tables(Some(schema)).await?;
-        db_schema.views = self.analyze_views(Some(schema)).await?;
-        Ok(db_schema)
+        // MySQL-specific implementation
+        todo!("Implement MySQL schema analysis")
     }
 
     async fn analyze_tables(&self, schema_name: Option<&str>) -> Result<HashMap<String, Table>> {
-        let schema = schema_name.unwrap_or("public");
-        let mut tables = HashMap::new();
-
-        // Get tables
-        let sql = r#"
-            SELECT table_name
-            FROM information_schema.tables
-            WHERE table_schema = ?
-              AND table_type = 'BASE TABLE'
-        "#;
-
-        let table_rows = sqlx::query_as::<_, TableRow>(sql)
-            .bind(schema)
-            .fetch_all(self.pool)
-            .await?;
-
-        for row in table_rows {
-            let table_name = row.table_name;
-            let mut table = Table::new(&table_name);
-
-            // Columns
-            let sql = r#"
-                SELECT column_name, data_type, is_nullable, column_default, character_maximum_length
-                FROM information_schema.columns
-                WHERE table_schema = ? AND table_name = ?
-                ORDER BY ordinal_position
-            "#;
-
-            let column_rows = sqlx::query_as::<_, ColumnRow>(sql)
-                .bind(schema)
-                .bind(&table_name)
-                .fetch_all(self.pool)
-                .await?;
-
-            for col in column_rows {
-                let mut data_type = col.data_type;
-                if let Some(max_length) = col.character_maximum_length {
-                    if data_type == "varchar" {
-                        data_type = format!("varchar({})", max_length);
-                    }
-                }
-
-                let column = Column {
-                    name: col.column_name,
-                    data_type,
-                    nullable: col.is_nullable == "YES",
-                    default: col.column_default,
-                    comment: None,
-                    is_unique: false,
-                    is_generated: false,
-                    generation_expression: None,
-                };
-
-                table.add_column(column);
-            }
-
-            // Primary key
-            let sql = r#"
-                SELECT k.constraint_name, k.column_name
-                FROM information_schema.table_constraints t
-                JOIN information_schema.key_column_usage k
-                ON t.constraint_name = k.constraint_name
-                WHERE t.table_schema = ? AND t.table_name = ?
-                AND t.constraint_type = 'PRIMARY KEY'
-            "#;
-
-            let pk_rows = sqlx::query_as::<_, PrimaryKeyRow>(sql)
-                .bind(schema)
-                .bind(&table_name)
-                .fetch_all(self.pool)
-                .await?;
-
-            if !pk_rows.is_empty() {
-                let pk_name = pk_rows[0].constraint_name.clone();
-                let pk_columns = pk_rows.into_iter().map(|r| r.column_name).collect();
-                table.set_primary_key(PrimaryKey {
-                    name: Some(pk_name),
-                    columns: pk_columns,
-                });
-            }
-
-            // Foreign keys
-            let sql = r#"
-                SELECT
-                    rc.constraint_name,
-                    kcu.column_name,
-                    kcu.referenced_table_name as ref_table,
-                    kcu.referenced_column_name as ref_column,
-                    rc.delete_rule,
-                    rc.update_rule
-                FROM information_schema.referential_constraints rc
-                JOIN information_schema.key_column_usage kcu
-                  ON rc.constraint_name = kcu.constraint_name
-                WHERE rc.constraint_schema = ? AND kcu.table_name = ?
-            "#;
-
-            let fk_rows = sqlx::query_as::<_, ForeignKeyRow>(sql)
-                .bind(schema)
-                .bind(&table_name)
-                .fetch_all(self.pool)
-                .await?;
-
-            let mut foreign_keys = HashMap::new();
-            for row in fk_rows {
-                let key = row.constraint_name.clone();
-                foreign_keys
-                    .entry(key.clone())
-                    .or_insert(ForeignKey {
-                        name: row.constraint_name,
-                        columns: vec![],
-                        ref_table: row.ref_table,
-                        ref_columns: vec![],
-                        on_delete: Some(row.delete_rule),
-                        on_update: Some(row.update_rule),
-                    })
-                    .columns
-                    .push(row.column_name);
-                foreign_keys
-                    .get_mut(&key)
-                    .unwrap()
-                    .ref_columns
-                    .push(row.ref_column);
-            }
-
-            table.foreign_keys = foreign_keys.into_values().collect();
-
-            tables.insert(table_name, table);
-        }
-
-        Ok(tables)
+        // MySQL-specific implementation
+        todo!("Implement MySQL table analysis")
     }
 
     async fn analyze_views(&self, schema_name: Option<&str>) -> Result<HashMap<String, View>> {
-        let schema = schema_name.unwrap_or("public");
-        let mut views = HashMap::new();
-
-        let sql = r#"
-            SELECT table_name, view_definition, 'NO' as is_updatable
-            FROM information_schema.views
-            WHERE table_schema = ?
-        "#;
-
-        let view_rows = sqlx::query_as::<_, ViewRow>(sql)
-            .bind(schema)
-            .fetch_all(self.pool)
-            .await?;
-
-        for row in view_rows {
-            let view_name = row.table_name;
-            let sql = r#"
-                SELECT column_name, data_type, is_nullable
-                FROM information_schema.columns
-                WHERE table_schema = ? AND table_name = ?
-                ORDER BY ordinal_position
-            "#;
-
-            let column_rows = sqlx::query_as::<_, ColumnRow>(sql)
-                .bind(schema)
-                .bind(&view_name)
-                .fetch_all(self.pool)
-                .await?;
-
-            let columns = column_rows
-                .into_iter()
-                .map(|col| Column {
-                    name: col.column_name,
-                    data_type: col.data_type,
-                    nullable: col.is_nullable == "YES",
-                    default: None,
-                    comment: None,
-                    is_unique: false,
-                    is_generated: false,
-                    generation_expression: None,
-                })
-                .collect();
-
-            let view = View {
-                name: view_name.clone(),
-                definition: row.view_definition.unwrap_or_default(),
-                columns,
-                is_materialized: false,
-            };
-
-            views.insert(view_name, view);
-        }
-
-        Ok(views)
+        // MySQL-specific implementation
+        todo!("Implement MySQL view analysis")
     }
 }
 
 struct SqliteAnalyzer<'a> {
     pool: &'a Pool<Sqlite>,
 }
+
 #[async_trait]
 impl<'a> Analyzer for SqliteAnalyzer<'a> {
     async fn analyze_schema(&self, schema_name: Option<&str>) -> Result<DatabaseSchema> {
-        let mut db_schema = DatabaseSchema::new(None);
-        db_schema.tables = self.analyze_tables(schema_name).await?;
-        db_schema.views = self.analyze_views(schema_name).await?;
-        Ok(db_schema)
+        // SQLite-specific implementation
+        todo!("Implement SQLite schema analysis")
     }
 
-    async fn analyze_tables(&self, _schema_name: Option<&str>) -> Result<HashMap<String, Table>> {
-        let mut tables = HashMap::new();
-
-        let sql = r#"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"#;
-        let table_rows = sqlx::query_as::<_, TableRow>(sql)
-            .fetch_all(self.pool)
-            .await?;
-
-        for row in table_rows {
-            let table_name = row.table_name.clone();
-            let mut table = Table::new(&table_name);
-
-            let pragma = format!("PRAGMA table_info({})", table_name);
-            let columns = sqlx::query(&pragma).fetch_all(self.pool).await?;
-
-            for col in columns {
-                let name: String = col.try_get("name")?;
-                let data_type: String = col.try_get("type")?;
-                let notnull: i64 = col.try_get("notnull")?;
-                let dflt_value: Option<String> = col.try_get("dflt_value")?;
-                let pk: i64 = col.try_get("pk")?;
-
-                let column = Column {
-                    name,
-                    data_type,
-                    nullable: notnull == 0,
-                    default: dflt_value,
-                    comment: None,
-                    is_unique: false,
-                    is_generated: false,
-                    generation_expression: None,
-                };
-
-                table.add_column(column.clone());
-
-                if pk > 0 {
-                    table.set_primary_key(PrimaryKey {
-                        name: None,
-                        columns: vec![column.name.clone()],
-                    });
-                }
-            }
-
-            tables.insert(table_name, table);
-        }
-
-        Ok(tables)
+    async fn analyze_tables(&self, schema_name: Option<&str>) -> Result<HashMap<String, Table>> {
+        // SQLite-specific implementation
+        todo!("Implement SQLite table analysis")
     }
 
-    async fn analyze_views(&self, _schema_name: Option<&str>) -> Result<HashMap<String, View>> {
-        let mut views = HashMap::new();
-
-        let sql = r#"SELECT name, sql FROM sqlite_master WHERE type = 'view'"#;
-        let rows = sqlx::query(sql).fetch_all(self.pool).await?;
-
-        for row in rows {
-            let view_name: String = row.try_get("name")?;
-            let definition: String = row.try_get("sql")?;
-
-            let pragma = format!("PRAGMA table_info({})", view_name);
-            let columns_info = sqlx::query(&pragma).fetch_all(self.pool).await?;
-
-            let columns = columns_info
-                .into_iter()
-                .map(|col| Column {
-                    name: col.get("name"),
-                    data_type: col.get("type"),
-                    nullable: col.get::<i64, _>("notnull") == 0,
-                    default: col.get("dflt_value"),
-                    comment: None,
-                    is_unique: false,
-                    is_generated: false,
-                    generation_expression: None,
-                })
-                .collect();
-
-            views.insert(
-                view_name.clone(),
-                View {
-                    name: view_name,
-                    definition,
-                    columns,
-                    is_materialized: false,
-                },
-            );
-        }
-
-        Ok(views)
+    async fn analyze_views(&self, schema_name: Option<&str>) -> Result<HashMap<String, View>> {
+        // SQLite-specific implementation
+        todo!("Implement SQLite view analysis")
     }
 }
